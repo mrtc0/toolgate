@@ -8,6 +8,9 @@
 #   - Safe cwd operations
 #
 # Rules are evaluated top-to-bottom, first-match-wins.
+#
+# "defaults:recommended" refers to the embedded default policies in
+# internal/core/policy/defaults (recommended.yaml).
 
 version: 1
 default: ask
