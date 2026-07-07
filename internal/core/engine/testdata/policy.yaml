@@ -1,0 +1,70 @@
+# An example policy used as a test fixture.
+version: 1
+default: ask
+
+rules:
+  - name: block-rm-recursive-force
+    action: deny
+    when: |
+      cmds.exists(c,
+        c.name == "rm" &&
+        c.flags.exists(f, f == "r" || f == "recursive") &&
+        c.flags.exists(f, f == "f" || f == "force"))
+    message: "rm -rf is blocked (matched by AST, not text)."
+
+  - name: ask-destructive-with-unknown
+    action: ask
+    when: |
+      cmds.exists(c, c.has_unknown && c.name in ["rm","dd","mkfs","shred"])
+    message: "Destructive command with unresolved expansion. Confirm."
+
+  - name: allow-force-with-lease
+    action: allow
+    when: |
+      cmds.exists(c,
+        c.name == "git" &&
+        c.args.exists(a, a == "--force-with-lease"))
+
+  - name: ask-git-force-push
+    action: ask
+    when: |
+      cmds.exists(c,
+        c.name == "git" &&
+        c.args.exists(a, a == "push") &&
+        (c.args.exists(a, a == "--force") || c.flags.exists(f, f == "f" || f == "force")))
+    message: "Force push without lease. Confirm before proceeding."
+
+  - name: block-overwrite-system-files
+    action: deny
+    when: |
+      cmds.exists(c,
+        c.writes_to.exists(p,
+          p.startsWith("/etc/") || p.startsWith("/usr/") ||
+          p.matches(r'(^|/)\.(bashrc|zshrc|profile)$')))
+    message: "Writing onto system or shell-config files is blocked."
+
+  - name: block-download-pipe-shell
+    action: deny
+    when: |
+      cmds.exists(c,
+        c.name in ["sh","bash","zsh","dash"] &&
+        c.in_pipe &&
+        c.pipe_from.exists(p, p in ["curl","wget","fetch"]))
+    message: "curl/wget piped into a shell is blocked."
+
+  - name: protect-secrets-file-tools
+    action: deny
+    when: |
+      (tool in ["Write", "Edit", "MultiEdit", "Read", "Grep", "Glob"]) &&
+      paths.exists(p, p.matches(r'(^|/)\.env(\.|$)') ||
+                      p.matches(r'(^|/)(id_rsa|id_ed25519)(\.|$)'))
+    message: "Access to secret files is blocked."
+
+  - name: protect-secrets-bash
+    action: deny
+    when: |
+      tool == "Bash" &&
+      cmds.exists(c,
+        c.reads_from.exists(p, p.matches(r'(^|/)\.env(\.|$)')) ||
+        c.args.exists(a, a.matches(r'(^|/)\.env(\.|$)')))
+    message: "Reading secret files via shell is blocked."

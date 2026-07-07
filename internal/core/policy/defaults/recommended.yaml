@@ -1,0 +1,23 @@
+# Recommended default policy
+#
+# Includes all standard protections:
+#   - Self-protection (toolgate config)
+#   - Deny package publishing
+#   - Deny deploy commands
+#   - Allow harmless Claude Code activity (~/.claude access, safe tools)
+#   - Sensitive file access controls
+#   - Dangerous command detection
+#   - Dangerous git operations (force push, history rewrite, ...)
+#   - Safe cwd operations
+version: 1
+default: ask
+
+include:
+  - defaults:self-protection
+  - defaults:deny-publish
+  - defaults:deny-deploy
+  - defaults:allow-claude-code
+  - defaults:sensitive-file-access
+  - defaults:dangerous-commands
+  - defaults:git
+  - defaults:safe-cwd

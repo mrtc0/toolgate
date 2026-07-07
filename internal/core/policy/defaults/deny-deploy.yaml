@@ -1,0 +1,16 @@
+# Deny deploy commands
+version: 1
+
+lets:
+  deploy_tools: '["vercel", "netlify", "flyctl", "fly", "wrangler", "serverless", "sls", "sst", "pulumi", "heroku"]'
+
+rules:
+  - name: deny-deploy
+    action: deny
+    when: |
+      cmds.exists(c,
+        c.name in deploy_tools ||
+        (c.name == "terraform" && c.args.exists(a, a in ["apply", "destroy"])) ||
+        (c.name == "kubectl" && c.args.exists(a, a in ["apply", "delete", "drain", "cordon", "replace"])) ||
+        (c.name == "docker" && c.args.exists(a, a == "push")))
+    message: "Deploy command is blocked."

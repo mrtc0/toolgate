@@ -1,0 +1,69 @@
+# Dangerous shell commands that require confirmation
+version: 1
+
+rules:
+  # rm -rf → ask
+  - name: ask-rm-rf
+    action: ask
+    when: |
+      cmds.exists(c,
+        c.name == "rm" &&
+        c.flags.exists(f, f in ["r", "recursive"]) &&
+        c.flags.exists(f, f in ["f", "force"]))
+    message: "rm -rf detected. Confirm."
+
+  # Shell redirect file writes → ask
+  - name: ask-redirect-file-write
+    action: ask
+    when: |
+      kind == "exec" &&
+      cmds.exists(c, c.redirects.exists(r,
+        r.op in [">", ">>"] && r.target != "/dev/null"))
+    message: "File write via shell redirect. Confirm."
+
+  # sed scripts that may execute commands or read/write files → ask
+  #
+  # Detects dangerous sed commands:
+  #   -f / --file flag: loads external script file
+  #   e command: executes pattern space as shell command
+  #   w / W command: writes matched content to file
+  #   r / R command: reads external file and inserts
+  #   s/.../.../e flag: executes replacement result as shell command
+  #   s/.../.../w flag: writes substitution result to file
+  #
+  # Regex structure:
+  #   (^|;|=)                           - start of command or after separator
+  #   ([0-9,$~]+\s*|/[^/]*/\s*)?        - optional address (line number or regex)
+  #   !?                                - optional negation
+  #   [eWwRr]                           - dangerous sed command character
+  #
+  # Examples that match:
+  #   sed 's/foo/bar/e'      - executes replacement as shell command
+  #   sed '1,5w output.txt'  - writes lines 1-5 to file
+  #   sed 'e'                - executes pattern space
+  #   sed -f script.sed      - loads external script
+  - name: ask-sed-script-exec-or-file
+    action: ask
+    when: |
+      kind == "exec" &&
+      cmds.exists(c,
+        c.name in ["sed", "gsed"] &&
+        (c.flags.exists(f, f in ["f", "file"]) ||
+         c.args.exists(a,
+           a.matches(r'(^|;|=)\s*([0-9,$~]+\s*|/[^/]*/\s*)?!?\s*[eWwRr]($|[^0-9A-Za-z_])') ||
+           a.matches(r'(^|;|=)\s*([0-9,$~]+\s*|/[^/]*/\s*)?!?\s*s[/|,#:@_].*[/|,#:@_][0-9A-Za-z]*e[0-9A-Za-z]*\s*($|;)') ||
+           a.matches(r'(^|;|=)\s*([0-9,$~]+\s*|/[^/]*/\s*)?!?\s*s[/|,#:@_].*[/|,#:@_][0-9A-Za-z]*[wW]\s+\S'))))
+    message: "sed script may execute commands or read/write files. Confirm."
+
+  # find/fd actions that execute commands or modify files → ask
+  - name: ask-find-exec-or-delete
+    action: ask
+    when: |
+      kind == "exec" &&
+      cmds.exists(c,
+        c.name in ["find", "fd"] &&
+        c.args.exists(a, a in [
+          "-exec", "-execdir", "-ok", "-okdir", "-delete",
+          "-fprint", "-fprint0", "-fprintf", "-fls",
+          "-x", "--exec", "-X", "--exec-batch"]))
+    message: "find/fd with exec/delete/file-write action. Confirm."

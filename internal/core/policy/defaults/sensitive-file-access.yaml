@@ -1,0 +1,9 @@
+# Sensitive file access controls
+version: 1
+
+rules:
+  # Access to .env files → ask
+  - name: ask-env
+    action: ask
+    when: accesses.exists(p, p.glob("{.env,.env.*}"))
+    message: "Access to .env file. Confirm."

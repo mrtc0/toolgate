@@ -1,0 +1,44 @@
+# Safe operations within current working directory
+version: 1
+
+lets:
+  ro_cmds: '["cat", "head", "tail", "less", "more", "bat", "grep", "rg", "ag", "ack", "wc", "file", "stat", "du", "df", "sort", "uniq", "cut", "tr", "nl", "column", "diff", "cmp", "comm", "echo", "cd"]'
+  ls_cmds: '["ls", "ll", "la", "tree", "find", "fd", "locate"]'
+  fs_cmds: '["touch", "mkdir", "cp", "mv", "ln", "rm", "rmdir", "sed", "gsed", "tee", "truncate", "chmod", "chown", "tar", "zip", "unzip", "gzip", "gunzip", "bzip2", "xz"]'
+  safe_ro_cmds: "ro_cmds + ls_cmds"
+
+rules:
+  # Access outside cwd → ask
+  - name: ask-read-outside-cwd
+    action: ask
+    when: |
+      cwd != "" &&
+      reads.exists(p, !p.under(cwd) && !p.in_tmp())
+    message: "Reading outside current directory. Confirm."
+
+  - name: ask-write-outside-cwd
+    action: ask
+    when: |
+      cwd != "" &&
+      writes.exists(p, !p.under(cwd) && p != "/dev/null" && !p.in_tmp())
+    message: "Writing outside current directory. Confirm."
+
+  # File tools (Read/Write/Edit) inside cwd → allow
+  - name: allow-file-tools-in-cwd
+    action: allow
+    when: |
+      cwd != "" &&
+      kind.startsWith("file.") &&
+      accesses.all(p, p.under(cwd) || p == "/dev/null" || p.in_tmp())
+
+  # Shell commands inside cwd → allow
+  - name: allow-file-commands-in-cwd
+    action: allow
+    when: |
+      cwd != "" &&
+      kind == "exec" &&
+      cmds.all(c,
+        c.name in safe_ro_cmds ||
+        (c.name in fs_cmds &&
+         !c.has_unknown &&
+         c.arg_paths.all(p, p.under(cwd) || p == "/dev/null" || p.in_tmp())))

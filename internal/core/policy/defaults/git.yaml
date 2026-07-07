@@ -1,0 +1,211 @@
+# Git operations policy
+#
+# Two layers, evaluated top to bottom (first match wins):
+#
+# 1. ask rules — catch destructive or history-rewriting git commands so they
+#    still ask even when a user rule allows `git` broadly:
+#      - Force push / remote ref deletion
+#      - History rewriting (rebase, commit --amend, filter-branch, ...)
+#      - Discarding local changes (reset --hard, checkout -f, clean -f, ...)
+#      - Destroying recovery points (reflog expire, gc --prune, stash drop)
+#      - Force-deleting or moving refs (branch -D, tag -d, ...)
+#      - Bypassing hooks (--no-verify)
+#      - Config keys that execute commands or redirect remotes
+#
+# 2. allow rules — auto-allow read-only inspection commands that have no
+#    working-tree, ref, history, or config side effects (status, log, diff,
+#    remote -v, config --get, ...). These come last so any destructive variant
+#    is gated by the ask rules above before it can reach an allow.
+version: 1
+
+rules:
+  # git push --force / --mirror → ask
+  - name: ask-git-force-push
+    action: ask
+    when: |
+      kind == "exec" &&
+      cmds.exists(c,
+        c.name == "git" &&
+        c.args.exists(a, a == "push") &&
+        c.flags.exists(f, f in
+          ["f", "force", "force-with-lease", "force-if-includes", "mirror"]))
+    message: "git push --force rewrites remote history. Confirm."
+
+  # Deleting remote refs: push --delete / push origin :ref → ask
+  - name: ask-git-push-delete
+    action: ask
+    when: |
+      kind == "exec" &&
+      cmds.exists(c,
+        c.name == "git" &&
+        c.args.exists(a, a == "push") &&
+        (c.flags.exists(f, f in ["d", "delete"]) ||
+         c.args.exists(a, a.matches(r'^:\S+'))))
+    message: "git push deleting remote refs. Confirm."
+
+  # History rewriting → ask
+  - name: ask-git-history-rewrite
+    action: ask
+    when: |
+      kind == "exec" &&
+      cmds.exists(c,
+        c.name == "git" &&
+        (c.args.exists(a, a in ["rebase", "filter-branch", "filter-repo", "replace"]) ||
+         (c.args.exists(a, a == "commit") && c.flags.exists(f, f == "amend"))))
+    message: "git history rewrite (rebase/amend/filter). Confirm."
+
+  # Discarding uncommitted local changes → ask
+  #
+  # restore: plain `git restore <path>` overwrites worktree files; only the
+  # pure --staged form (unstage, no worktree change) is exempt.
+  # clean: requires -f/--force to delete anything, so gate on that flag.
+  - name: ask-git-discard-changes
+    action: ask
+    when: |
+      kind == "exec" &&
+      cmds.exists(c,
+        c.name == "git" &&
+        ((c.args.exists(a, a == "reset") && c.flags.exists(f, f == "hard")) ||
+         (c.args.exists(a, a in ["checkout", "switch"]) &&
+          c.flags.exists(f, f in ["f", "force", "discard-changes"])) ||
+         (c.args.exists(a, a == "restore") &&
+          (c.flags.exists(f, f in ["W", "worktree"]) ||
+           !c.flags.exists(f, f in ["S", "staged"]))) ||
+         (c.args.exists(a, a == "clean") && c.flags.exists(f, f in ["f", "force"]))))
+    message: "git command discards uncommitted changes. Confirm."
+
+  # Force-deleting or force-moving refs → ask
+  # (branch -d and tag without -d/-f refuse unsafe operations, so only the
+  # force variants are gated)
+  - name: ask-git-force-ref-update
+    action: ask
+    when: |
+      kind == "exec" &&
+      cmds.exists(c,
+        c.name == "git" &&
+        ((c.args.exists(a, a == "branch") && c.flags.exists(f, f in ["D", "f", "force"])) ||
+         (c.args.exists(a, a == "tag") && c.flags.exists(f, f in ["d", "delete", "f", "force"])) ||
+         (c.args.exists(a, a == "update-ref") && c.flags.exists(f, f in ["d", "delete"]))))
+    message: "git force-deleting or moving refs. Confirm."
+
+  # Destroying recovery points (reflog, unreachable objects, stashes) → ask
+  - name: ask-git-destroy-recovery
+    action: ask
+    when: |
+      kind == "exec" &&
+      cmds.exists(c,
+        c.name == "git" &&
+        ((c.args.exists(a, a == "reflog") && c.args.exists(a, a in ["expire", "delete"])) ||
+         (c.args.exists(a, a == "gc") && c.flags.exists(f, f == "prune")) ||
+         (c.args.exists(a, a == "stash") && c.args.exists(a, a in ["drop", "clear"]))))
+    message: "git command destroys recovery points (reflog/stash/objects). Confirm."
+
+  # Bypassing hooks → ask
+  # (`commit -n` is short for --no-verify; -n means dry-run for other
+  # subcommands, so it is only gated for commit)
+  - name: ask-git-no-verify
+    action: ask
+    when: |
+      kind == "exec" &&
+      cmds.exists(c,
+        c.name == "git" &&
+        ((c.args.exists(a, a in ["commit", "push", "merge", "rebase"]) &&
+          c.flags.exists(f, f == "no-verify")) ||
+         (c.args.exists(a, a == "commit") && c.flags.exists(f, f == "n"))))
+    message: "git --no-verify bypasses hooks. Confirm."
+
+  # Rewriting where an existing remote points → ask
+  - name: ask-git-remote-modify
+    action: ask
+    when: |
+      kind == "exec" &&
+      cmds.exists(c,
+        c.name == "git" &&
+        c.args.exists(a, a == "remote") &&
+        c.args.exists(a, a in ["set-url", "remove", "rm"]))
+    message: "git remote modification redirects future pushes. Confirm."
+
+  # Config keys that execute commands or redirect remotes → ask
+  #
+  # Covers `git config <key> ...` and inline `git -c <key>=<value> ...` for
+  # keys that lead to command execution (hooksPath, fsmonitor, pager, editor,
+  # sshCommand, askpass, credential helpers, aliases, filters, textconv,
+  # merge drivers, gpg.program) or redirect/weaken transport
+  # (url.*.insteadOf, remote url/proxy, http proxy/sslVerify, protocol.*).
+  - name: ask-git-config-dangerous-keys
+    action: ask
+    when: |
+      kind == "exec" &&
+      cmds.exists(c,
+        c.name == "git" &&
+        (c.args.exists(a, a == "config") || c.flags.exists(f, f == "c")) &&
+        c.args.exists(a, a.matches(r'(?i)^(core\.(hookspath|fsmonitor|sshcommand|pager|editor|askpass)|credential\.|alias\.|filter\.|diff\.[^.]+\.(textconv|command)|merge\.[^.]+\.driver|gpg\.program|url\.[^=]*\.insteadof|remote\.[^.]+\.(url|pushurl|proxy|vcs)|http\.(proxy|sslverify)|protocol\.)')))
+    message: "git config key can execute commands or redirect remotes. Confirm."
+
+  # Arbitrary command execution via submodule foreach → ask
+  - name: ask-git-submodule-foreach
+    action: ask
+    when: |
+      kind == "exec" &&
+      cmds.exists(c,
+        c.name == "git" &&
+        c.args.exists(a, a == "submodule") &&
+        c.args.exists(a, a == "foreach"))
+    message: "git submodule foreach executes arbitrary commands. Confirm."
+
+  # Read-only git inspection commands → allow
+  #
+  # These subcommands never touch the working tree, refs, history, or config.
+  # The match is on the subcommand (first positional arg), not any arg, so
+  # e.g. `git checkout status` (a pathspec that happens to be named "status")
+  # is not swept in. Every command in the chain must be a read-only one, so a
+  # mixed chain (e.g. `git log && rm -rf x`) does NOT match and falls through
+  # to the default. The `output` flag is excluded so `git diff --output=<file>`
+  # (which writes a file) is not allowed.
+  - name: allow-git-read-only
+    action: allow
+    when: |
+      kind == "exec" &&
+      cmds.exists(c, c.name == "git") &&
+      cmds.all(c,
+        c.name == "git" &&
+        c.args.size() > 0 &&
+        c.args[0] in [
+          "status", "log", "show", "diff", "blame", "annotate", "shortlog",
+          "describe", "rev-parse", "rev-list", "ls-files", "ls-tree",
+          "ls-remote", "cat-file", "for-each-ref", "show-ref", "show-branch",
+          "name-rev", "merge-base", "whatchanged", "grep", "count-objects",
+          "verify-commit", "verify-tag", "cherry", "check-ignore",
+          "check-attr", "check-mailmap", "fsck", "var", "version", "help"] &&
+        !c.flags.exists(f, f == "output"))
+
+  # Read-only forms of subcommands that also have mutating forms → allow
+  #
+  # Listing/inspecting remotes, config, stashes, worktrees, submodules, and
+  # refs has no side effects. The subcommand is matched as the first
+  # positional arg; mutating forms lack the read markers required here, so
+  # they fall through to their ask rule above or to the default.
+  - name: allow-git-read-only-subcommands
+    action: allow
+    when: |
+      kind == "exec" &&
+      cmds.exists(c, c.name == "git") &&
+      cmds.all(c,
+        c.name == "git" &&
+        c.args.size() > 0 &&
+        ((c.args[0] == "remote" &&
+          !c.args.exists(a, a in
+            ["add", "remove", "rm", "rename", "set-url", "set-head",
+             "set-branches", "prune", "update"])) ||
+         (c.args[0] == "config" &&
+          c.flags.exists(f, f in
+            ["get", "get-all", "get-regexp", "get-urlmatch", "list", "l"])) ||
+         (c.args[0] == "stash" &&
+          c.args.exists(a, a in ["list", "show"])) ||
+         (c.args[0] == "worktree" && c.args.exists(a, a == "list")) ||
+         (c.args[0] == "submodule" &&
+          c.args.exists(a, a in ["status", "summary"])) ||
+         (c.args[0] in ["branch", "tag"] &&
+          c.flags.exists(f, f in
+            ["l", "list", "a", "all", "r", "remotes", "contains",
+             "no-contains", "merged", "no-merged", "points-at"]))))

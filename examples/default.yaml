@@ -1,0 +1,16 @@
+# toolgate minimal default policy
+#
+# A minimal, practical policy for general use.
+# Uses the recommended preset which includes:
+#   - Self-protection (toolgate config files)
+#   - Deny package publishing
+#   - Deny deploy commands
+#   - Safe cwd operations
+#
+# Rules are evaluated top-to-bottom, first-match-wins.
+
+version: 1
+default: ask
+
+include:
+  - defaults:recommended

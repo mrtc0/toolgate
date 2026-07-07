@@ -1,0 +1,18 @@
+# Deny package publishing commands
+version: 1
+
+lets:
+  pkg_managers: '["npm", "pnpm", "yarn"]'
+
+rules:
+  - name: deny-package-publish
+    action: deny
+    when: |
+      cmds.exists(c,
+        (c.name in pkg_managers && c.args.exists(a, a == "publish")) ||
+        (c.name == "cargo" && c.args.exists(a, a == "publish")) ||
+        (c.name == "gem" && c.args.exists(a, a == "push")) ||
+        (c.name == "twine" && c.args.exists(a, a == "upload")) ||
+        (c.name == "poetry" && c.args.exists(a, a == "publish")) ||
+        c.name == "goreleaser")
+    message: "Package publishing is blocked."

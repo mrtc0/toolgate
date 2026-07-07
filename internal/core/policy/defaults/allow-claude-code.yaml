@@ -1,0 +1,23 @@
+# Allow harmless Claude Code activity: access to ~/.claude directory
+# (plans, memory, etc.) and tools with no side effects.
+version: 1
+
+rules:
+  # Read/write inside ~/.claude (but not covered above) → allow
+  - name: allow-claude-dir-access
+    action: allow
+    when: |
+      kind.startsWith("file.") &&
+      accesses.all(p, p.under(home + "/.claude"))
+
+  # Harmless Claude Code tools: session-local state, UI-only, or read-only
+  # metadata operations. No file writes, no command execution, no network.
+  - name: allow-claude-harmless-tools
+    action: allow
+    when: |
+      kind == "other" && tool in [
+        "TodoWrite", "TaskCreate", "TaskGet", "TaskList", "TaskUpdate",
+        "AskUserQuestion", "EnterPlanMode", "ExitPlanMode",
+        "ReportFindings", "ScheduleWakeup", "ToolSearch",
+        "CronList", "CronDelete"
+      ]
