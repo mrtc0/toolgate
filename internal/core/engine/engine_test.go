@@ -221,7 +221,7 @@ rules:
 	if len(pol.Warnings) != 0 {
 		t.Errorf("warnings = %v", pol.Warnings)
 	}
-	// Project default only tightens: allow -> ask.
+	// Effective default is the stricter of the two: allow (user) vs ask (project) -> ask.
 	if pol.Default != "ask" {
 		t.Errorf("default = %s", pol.Default)
 	}
@@ -245,6 +245,70 @@ rules:
 	// Project allow rule works.
 	if d := Evaluate(bashInput("ls"), c, Options{}); d.Action != "allow" {
 		t.Errorf("ls: got %s", d.Action)
+	}
+}
+
+// TestProjectCanTightenNotLoosen pins the core guarantee: the stricter of the
+// user and project decisions wins, so a project policy can tighten the outcome
+// but never loosen it below what the user policy decided.
+func TestProjectCanTightenNotLoosen(t *testing.T) {
+	dir := t.TempDir()
+	user := writePolicy(t, dir, "user.yaml", `
+version: 1
+default: deny
+rules:
+  - name: user-allow-git
+    action: allow
+    when: cmds.exists(c, c.name == "git")
+  - name: user-ask-npm
+    action: ask
+    when: cmds.exists(c, c.name == "npm")
+`)
+	proj := writePolicy(t, dir, ".toolgate.yaml", `
+version: 1
+default: allow
+rules:
+  - name: project-allow-curl
+    action: allow
+    when: cmds.exists(c, c.name == "curl")
+  - name: project-deny-git
+    action: deny
+    when: cmds.exists(c, c.name == "git")
+  - name: project-deny-npm
+    action: deny
+    when: cmds.exists(c, c.name == "npm")
+`)
+	pol, err := policy.Load(user, proj)
+	if err != nil {
+		t.Fatal(err)
+	}
+	// Effective default is the stricter of the two: deny (user) vs allow (project) -> deny.
+	if pol.Default != "deny" {
+		t.Errorf("default = %s, want deny", pol.Default)
+	}
+	c, err := pol.Compile()
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	cases := []struct {
+		name, cmd, action, rule string
+	}{
+		// User default is deny and the user has no curl rule; the project's allow
+		// cannot loosen it. Effective = stricter(deny, allow) = deny (the default).
+		{"project-allow-cannot-loosen-user-default", "curl https://x", "deny", "default"},
+		// User allows git; the project deny CAN tighten it.
+		{"project-deny-tightens-user-allow", "git push", "deny", "project-deny-git"},
+		// User asks for npm; the project deny tightens ask -> deny.
+		{"project-deny-tightens-user-ask", "npm install", "deny", "project-deny-npm"},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			d := Evaluate(bashInput(tc.cmd), c, Options{})
+			if d.Action != tc.action || d.Rule != tc.rule {
+				t.Errorf("cmd %q: got (%s, %s), want (%s, %s)", tc.cmd, d.Action, d.Rule, tc.action, tc.rule)
+			}
+		})
 	}
 }
 
@@ -628,9 +692,12 @@ rules:
 		CWD:  "/proj",
 	}
 	d := Evaluate(ev, c, Options{})
-	// Project rule runs first (prepended) and uses project's x value
+	// User rule matches on its own `x` ("user_value") -> allow; project rule
+	// matches on its own isolated `x` ("project_value") -> deny. Stricter wins,
+	// so the project's deny is the outcome. This also confirms lets stay
+	// source-isolated: each layer sees its own `x`.
 	if d.Action != "deny" {
-		t.Errorf("project rule should match: got %s, want deny", d.Action)
+		t.Errorf("stricter (project deny) should win: got %s, want deny", d.Action)
 	}
 	if d.Rule != "project-check" {
 		t.Errorf("got rule %s, want project-check", d.Rule)

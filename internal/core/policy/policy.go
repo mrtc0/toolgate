@@ -89,10 +89,17 @@ type File struct {
 
 // Policy is the merged, effective policy.
 type Policy struct {
-	Default     string
-	UserLets    []Let // lets from user policy (trusted)
-	ProjectLets []Let // lets from project policy (semi-trusted, isolated scope)
-	Rules       []Rule
+	// Default is the effective floor when no rule matches anywhere: the stricter
+	// of the two layer defaults. Also the fallback a degraded policy falls back to.
+	Default string
+	// UserDefault is the user layer's own default (fallback when no user rule matches).
+	UserDefault string
+	// ProjectDefault is the project layer's own default, or "" when the project
+	// policy declares none (the project layer then expresses no opinion).
+	ProjectDefault string
+	UserLets       []Let // lets from user policy (trusted)
+	ProjectLets    []Let // lets from project policy (semi-trusted, isolated scope)
+	Rules          []Rule
 	// Warnings collected while loading.
 	Warnings []string
 }
@@ -178,8 +185,11 @@ func FindProjectPolicy(cwd string) string {
 
 // Load reads and merges the user policy and the project policy.
 //
-// Merge semantics: project rules may only add deny/ask rules and may
-// only make the default stricter. Project rules are prepended so they run first.
+// Merge semantics ("stricter wins"): the engine evaluates the user layer and the
+// project layer independently and takes the stricter (deny > ask > allow) of the
+// two decisions. A project policy can therefore only tighten the outcome, never
+// loosen it below what the user policy decided — neither via its rules nor via
+// its default. The user layer is authoritative.
 func Load(userPath, projectPath string) (*Policy, error) {
 	p := &Policy{Default: ActionAsk}
 
@@ -207,9 +217,15 @@ func Load(userPath, projectPath string) (*Policy, error) {
 	if userFile != nil && userFile.Default != "" {
 		userDefault = userFile.Default
 	}
-	p.Default = userDefault
+	p.UserDefault = userDefault
 	if projFile != nil && projFile.Default != "" {
-		p.Default = Stricter(userDefault, projFile.Default)
+		p.ProjectDefault = projFile.Default
+	}
+	// Effective floor when no rule matches anywhere: the stricter of the two
+	// layer defaults. An absent project default expresses no opinion.
+	p.Default = userDefault
+	if p.ProjectDefault != "" {
+		p.Default = Stricter(userDefault, p.ProjectDefault)
 	}
 
 	if projFile != nil {

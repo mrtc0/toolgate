@@ -74,17 +74,22 @@ func Evaluate(ev *event.Event, pol *policy.Compiled, opts Options) Decision {
 	projectVars, projectDegraded := evalLets(pol.ProjectLets, baseVars, &d)
 	degraded := pol.Broken || userDegraded || projectDegraded
 
-	// 3. Policy rules, first-match-wins.
-	matched := -1
+	// 3. Evaluate the user layer and the project layer independently, each
+	// first-match-wins within its own layer. The stricter of the two decisions
+	// wins (step 4), so a project policy can only tighten the outcome, never
+	// loosen it below what the user policy decided. The user layer is authoritative.
+	userMatch, projMatch := -1, -1
 	for i, cr := range pol.Rules {
+		isProject := cr.Rule.Source == "project"
 		t := RuleTrace{Name: cr.Rule.Name, Action: cr.Rule.Action, Source: cr.Rule.Source}
-		// Select activation based on rule source
 		vars := userVars
-		if cr.Rule.Source == "project" {
+		layerDone := userMatch >= 0
+		if isProject {
 			vars = projectVars
+			layerDone = projMatch >= 0
 		}
 		switch {
-		case matched >= 0:
+		case layerDone:
 			t.Skipped = true
 		case cr.Err != nil:
 			t.Error = cr.Err.Error()
@@ -100,21 +105,41 @@ func Evaluate(ev *event.Event, pol *policy.Compiled, opts Options) Decision {
 				degraded = true
 			} else if b, ok := out.Value().(bool); ok && b {
 				t.Matched = true
-				matched = i
+				if isProject {
+					projMatch = i
+				} else {
+					userMatch = i
+				}
 			}
 		}
 		d.Trace = append(d.Trace, t)
 	}
 
-	if matched >= 0 {
-		r := pol.Rules[matched].Rule
-		d.Action = r.Action
-		d.Rule = r.Name
-		d.Message = r.Message
-	} else {
-		d.Action = pol.Default
-		d.Rule = "default"
+	// The user layer always has a decision: its matched rule or the user default.
+	userAction, userRule, userMsg := pol.UserDefault, "default", ""
+	if userMatch >= 0 {
+		r := pol.Rules[userMatch].Rule
+		userAction, userRule, userMsg = r.Action, r.Name, r.Message
 	}
+	// The project layer contributes only if it has an opinion: a matched rule, or
+	// an explicit project default. Otherwise it stays out of the way.
+	projAction, projRule, projMsg := "", "", ""
+	projHasOpinion := false
+	if projMatch >= 0 {
+		r := pol.Rules[projMatch].Rule
+		projAction, projRule, projMsg, projHasOpinion = r.Action, r.Name, r.Message, true
+	} else if pol.ProjectDefault != "" {
+		projAction, projRule, projHasOpinion = pol.ProjectDefault, "default", true
+	}
+
+	// Stricter wins. The project only overrides when it is at least as strict as
+	// the user decision, so it can tighten but never loosen. On a tie the
+	// project's rule is reported since it is the tightening layer.
+	d.Action, d.Rule, d.Message = userAction, userRule, userMsg
+	if projHasOpinion && policy.Severity(projAction) >= policy.Severity(userAction) {
+		d.Action, d.Rule, d.Message = projAction, projRule, projMsg
+	}
+	anyMatched := userMatch >= 0 || projMatch >= 0
 
 	// 4. Degraded policy: a broken rule might have been a stricter rule
 	// that would have matched first, so never let a degraded policy allow.
@@ -131,7 +156,7 @@ func Evaluate(ev *event.Event, pol *policy.Compiled, opts Options) Decision {
 	// A matched deny (from a regex rule) stays deny; anything weaker becomes
 	// ask unless an explicit ask rule already matched.
 	if isExec && !res.ParseOK && !opts.FailOpen &&
-		d.Action != policy.ActionDeny && (matched < 0 || d.Action == policy.ActionAllow) {
+		d.Action != policy.ActionDeny && (!anyMatched || d.Action == policy.ActionAllow) {
 		d.Action = policy.ActionAsk
 		d.Rule = "builtin:shell-parse-failed"
 		d.Message = "Shell command could not be parsed; structural rules were skipped. Confirm."

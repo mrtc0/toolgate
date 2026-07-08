@@ -27,11 +27,17 @@ type CompiledRule struct {
 
 // Compiled is a policy with all rule expressions pre-compiled.
 type Compiled struct {
-	Default     string
-	UserLets    []CompiledLet // compiled lets from user policy
-	ProjectLets []CompiledLet // compiled lets from project policy
-	Rules       []CompiledRule
-	Warnings    []string
+	// Default is the effective floor when no rule matches (stricter of the two
+	// layer defaults) and the fallback for a degraded policy.
+	Default string
+	// UserDefault / ProjectDefault are the per-layer fallbacks. ProjectDefault is
+	// "" when the project policy declares none (project layer has no opinion).
+	UserDefault    string
+	ProjectDefault string
+	UserLets       []CompiledLet // compiled lets from user policy
+	ProjectLets    []CompiledLet // compiled lets from project policy
+	Rules          []CompiledRule
+	Warnings       []string
 	// Broken is true when at least one rule or let failed to compile. In that case
 	// `allow` outcomes are degraded to the default action, because the broken
 	// rule might have been a stricter rule that would have matched first.
@@ -73,7 +79,12 @@ func (p *Policy) Compile() (*Compiled, error) {
 	if err != nil {
 		return nil, fmt.Errorf("cel environment: %w", err)
 	}
-	c := &Compiled{Default: p.Default, Warnings: p.Warnings}
+	c := &Compiled{
+		Default:        p.Default,
+		UserDefault:    p.UserDefault,
+		ProjectDefault: p.ProjectDefault,
+		Warnings:       p.Warnings,
+	}
 
 	// Compile user lets, extending the environment after each successful let
 	userEnv := baseEnv

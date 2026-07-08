@@ -15,5 +15,5 @@ rules:
         (c.name == "go" &&
          c.args.size() > 0 &&
          c.args[0] in ["build", "doc", "fix", "fmt", "generate", "list", "test", "version", "vet"])
-        || c.name in ["cd", "pwd", "echo", "true"]
+        || c.name in ["cd", "pwd", "echo", "true", "tail"]
       )

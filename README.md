@@ -227,7 +227,13 @@ This lets a shared team policy or a project's `.toolgate.yaml` work unchanged on
 
 Ready-to-use samples are available in [examples/](examples/).
 
-Project policies (`.toolgate.yaml`) can tighten the default action but not loosen it beyond the user policy's default.
+### User and project policies
+
+toolgate loads up to two layers: the trusted **user** policy (`~/.config/toolgate/policy.yaml`) and a per-repository **project** policy (`.toolgate.yaml`, found by walking up from the working directory). They merge under a single rule — **stricter wins**:
+
+- The user layer and the project layer are evaluated independently (each first-match-wins over its own rules, falling back to its own `default`), and the **stricter** of the two decisions is taken (`deny` > `ask` > `allow`).
+- A project policy can therefore only **tighten** the outcome, **never loosen** it below what the user policy decided — neither through its rules nor through its `default`.
+- The user layer is authoritative: a repository cannot relax a user `ask`/`deny` down to `allow`. What a project `.toolgate.yaml` adds is the ability to make a specific repository *more* restrictive than your baseline.
 
 ## Self-Protection
 
@@ -246,7 +252,7 @@ toolgate only affects tool calls that go through a hook. The scope of what can b
 | MCP tool call (before execution)   | ○           | ○       | ○                               |
 | fail-closed on hook failure        | △           | △       | △ (must set `failClosed: true`) |
 
-- **Can prevent**: accidents by a agent (`rm -rf`, secret files, `curl | sh`, etc.), gate loosening via a malicious repository, and tampering with the gate via tool calls (when [self-protection](#self-protection) rules are in place).
+- **Can prevent**: accidents by a agent (`rm -rf`, secret files, `curl | sh`, etc.), gate loosening via a malicious repository (a project `.toolgate.yaml` can only tighten, never loosen, the user policy — see [User and project policies](#user-and-project-policies)), and tampering with the gate via tool calls (when [self-protection](#self-protection) rules are in place).
 - **Partial**: evasion by an adversarial agent (encoding, `python -c`, `eval`) can at best be downgraded to ask. **Child processes of an allowed process (e.g., postinstall) are invisible.**
 - **Cannot prevent**: operations for which the hook doesn't fire, **Cursor file writes**, host-side fail-open, TOCTOU. Ensure these are covered by combining toolgate with containers and privilege separation.
 
