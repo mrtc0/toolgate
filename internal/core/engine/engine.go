@@ -121,14 +121,18 @@ func Evaluate(ev *event.Event, pol *policy.Compiled, opts Options) Decision {
 		r := pol.Rules[userMatch].Rule
 		userAction, userRule, userMsg = r.Action, r.Name, r.Message
 	}
-	// The project layer contributes only if it has an opinion: a matched rule, or
-	// an explicit project default. Otherwise it stays out of the way.
+	// The project layer contributes only if it has an opinion: a matched rule,
+	// or — when no user rule matched either — an explicit project default. A
+	// matched user rule beats the project *default*: only an explicit project
+	// rule can tighten a decision the user made explicitly. Otherwise any
+	// project policy declaring `default: ask` would nullify every user allow
+	// rule just by existing.
 	projAction, projRule, projMsg := "", "", ""
 	projHasOpinion := false
 	if projMatch >= 0 {
 		r := pol.Rules[projMatch].Rule
 		projAction, projRule, projMsg, projHasOpinion = r.Action, r.Name, r.Message, true
-	} else if pol.ProjectDefault != "" {
+	} else if pol.ProjectDefault != "" && userMatch < 0 {
 		projAction, projRule, projHasOpinion = pol.ProjectDefault, "default", true
 	}
 

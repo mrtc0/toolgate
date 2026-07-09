@@ -234,8 +234,9 @@ Ready-to-use samples are available in [examples/](examples/).
 
 toolgate loads up to two layers: the trusted **user** policy (`~/.config/toolgate/policy.yaml`) and a per-repository **project** policy (`.toolgate.yaml`, found by walking up from the working directory). They merge under a single rule — **stricter wins**:
 
-- The user layer and the project layer are evaluated independently (each first-match-wins over its own rules, falling back to its own `default`), and the **stricter** of the two decisions is taken (`deny` > `ask` > `allow`).
-- A project policy can therefore only **tighten** the outcome, **never loosen** it below what the user policy decided — neither through its rules nor through its `default`.
+- The user layer and the project layer are evaluated independently (each first-match-wins over its own rules), and the **stricter** of the two decisions is taken (`deny` > `ask` > `allow`).
+- A project policy can therefore only **tighten** the outcome, **never loosen** it below what the user policy decided.
+- Project **rules** can tighten anything, including a matched user `allow`. The project **`default`** applies only when no user rule matched — so declaring `default: ask` in a `.toolgate.yaml` does not disable your user-level `allow` rules; when neither layer matches a rule, the stricter of the two `default`s applies.
 - The user layer is authoritative: a repository cannot relax a user `ask`/`deny` down to `allow`. What a project `.toolgate.yaml` adds is the ability to make a specific repository *more* restrictive than your baseline.
 
 ## Self-Protection

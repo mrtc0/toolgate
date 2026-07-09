@@ -202,8 +202,10 @@ func FindProjectPolicy(cwd string) string {
 // Merge semantics ("stricter wins"): the engine evaluates the user layer and the
 // project layer independently and takes the stricter (deny > ask > allow) of the
 // two decisions. A project policy can therefore only tighten the outcome, never
-// loosen it below what the user policy decided — neither via its rules nor via
-// its default. The user layer is authoritative.
+// loosen it below what the user policy decided. The user layer is authoritative.
+// Project rules can tighten any decision; the project default participates only
+// when no user rule matched, so a blanket project default cannot override
+// explicit user allow rules.
 func Load(userPath, projectPath string) (*Policy, error) {
 	p := &Policy{Default: ActionAsk}
 

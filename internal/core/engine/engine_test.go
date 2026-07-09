@@ -312,6 +312,57 @@ rules:
 	}
 }
 
+// TestUserRuleBeatsProjectDefault pins the fix for user allow rules being
+// nullified in any project that declares a default: a matched user rule wins
+// over the project *default*; only an explicit project rule can tighten it.
+func TestUserRuleBeatsProjectDefault(t *testing.T) {
+	dir := t.TempDir()
+	user := writePolicy(t, dir, "user.yaml", `
+version: 1
+default: ask
+rules:
+  - name: user-allow-go
+    action: allow
+    when: cmds.exists(c, c.name == "go")
+  - name: user-ask-npm
+    action: ask
+    when: cmds.exists(c, c.name == "npm")
+`)
+	proj := writePolicy(t, dir, ".toolgate.yaml", `
+version: 1
+default: deny
+rules:
+  - name: project-deny-go-generate
+    action: deny
+    when: cmds.exists(c, c.name == "go" && c.args.size() > 0 && c.args[0] == "generate")
+`)
+	c := loadTestPolicy(t, user, proj)
+
+	cases := []struct {
+		name, cmd, action, rule string
+	}{
+		// The matched user allow survives even though the project declares
+		// `default: deny` — the project default is not an opinion about
+		// commands the user decided explicitly.
+		{"user-allow-beats-project-default", "go test ./...", "allow", "user-allow-go"},
+		// Same for an explicit user ask.
+		{"user-ask-beats-project-default", "npm install", "ask", "user-ask-npm"},
+		// An explicit project rule still tightens a matched user allow.
+		{"project-rule-still-tightens", "go generate ./...", "deny", "project-deny-go-generate"},
+		// With no user match, the project default participates:
+		// stricter(ask, deny) = deny.
+		{"project-default-applies-without-user-match", "curl https://x", "deny", "default"},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			d := Evaluate(bashInput(tc.cmd), c, Options{})
+			if d.Action != tc.action || d.Rule != tc.rule {
+				t.Errorf("cmd %q: got (%s, %s), want (%s, %s)", tc.cmd, d.Action, d.Rule, tc.action, tc.rule)
+			}
+		})
+	}
+}
+
 func TestBrokenRuleDegradesAllow(t *testing.T) {
 	dir := t.TempDir()
 	user := writePolicy(t, dir, "user.yaml", `
