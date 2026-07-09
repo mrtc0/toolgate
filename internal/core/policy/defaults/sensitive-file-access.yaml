@@ -7,3 +7,50 @@ rules:
     action: ask
     when: accesses.exists(p, p.glob("{.env,.env.*}"))
     message: "Access to .env file. Confirm."
+
+  # SSH keys and other private keys / keystores → ask
+  - name: ask-private-keys
+    action: ask
+    when: |
+      accesses.exists(p,
+        p.glob(".ssh/**") ||
+        p.glob("*.{pem,pfx,p12}"))
+    message: "Access to an SSH or private key file. Confirm."
+
+  # Cloud provider credentials → ask
+  #
+  # gcloud: matches the default config dir (~/.config/gcloud). gcloud hardcodes
+  # ~/.config and does NOT honor XDG_CONFIG_HOME, so a path tail of
+  # .config/gcloud is correct regardless of home location. A custom CLOUDSDK_CONFIG
+  # location is NOT covered here (static policy can't read env vars); the ADC file
+  # is still caught by its distinctive basename below even in that case.
+  - name: ask-cloud-credentials
+    action: ask
+    when: |
+      accesses.exists(p,
+        p.glob(".aws/credentials") ||
+        p.glob("{.kube/config,kubeconfig}") ||
+        p.glob(".docker/config.json") ||
+        p.glob(".azure/**") ||
+        p.glob(".config/gcloud/{credentials.db,access_tokens.db}") ||
+        p.glob(".config/gcloud/legacy_credentials/**") ||
+        p.glob("application_default_credentials.json"))
+    message: "Access to cloud provider credentials. Confirm."
+
+  # Tokens and auth configs → ask
+  - name: ask-auth-tokens
+    action: ask
+    when: |
+      accesses.exists(p,
+        p.glob("{.netrc,_netrc}") ||
+        p.glob(".git-credentials") ||
+        p.glob("{.npmrc,.pypirc}") ||
+        p.glob(".pgpass") ||
+        p.glob(".htpasswd"))
+    message: "Access to a token or auth config file. Confirm."
+
+  # GPG keyring → ask
+  - name: ask-gpg
+    action: ask
+    when: accesses.exists(p, p.glob(".gnupg/**"))
+    message: "Access to the GPG keyring. Confirm."

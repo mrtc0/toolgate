@@ -31,10 +31,36 @@ include:
 		{"cat-dotenv", "ask", "ask-env", enginetest.BashInput("cat .env")},
 		{"cp-dotenv", "ask", "ask-env", enginetest.BashInput("cp .env /tmp/steal")},
 
+		// SSH / private keys. SSH keys are gated via the .ssh/** dir, not by
+		// bare key names, and TLS keys via PEM/PKCS extensions (not *.key).
+		{"read-ssh-dir", "ask", "ask-private-keys", enginetest.FileInput("Read", "/proj", "", "/home/u/.ssh/id_rsa")},
+		{"read-ssh-ed25519", "ask", "ask-private-keys", enginetest.FileInput("Read", "/proj", "", "/home/u/.ssh/id_ed25519")},
+		{"read-pem", "ask", "ask-private-keys", enginetest.FileInput("Read", "/proj", "", "certs/server.pem")},
+		{"cat-p12", "ask", "ask-private-keys", enginetest.BashInput("cat bundle.p12")},
+
+		// Cloud credentials
+		{"read-aws-creds", "ask", "ask-cloud-credentials", enginetest.FileInput("Read", "/proj", "", "/home/u/.aws/credentials")},
+		{"read-kubeconfig", "ask", "ask-cloud-credentials", enginetest.FileInput("Read", "/proj", "", ".kube/config")},
+		{"read-gcloud", "ask", "ask-cloud-credentials", enginetest.FileInput("Read", "/proj", "", "/home/u/.config/gcloud/access_tokens.db")},
+
+		// Tokens / auth configs
+		{"read-netrc", "ask", "ask-auth-tokens", enginetest.FileInput("Read", "/proj", "", "/home/u/.netrc")},
+		{"read-npmrc", "ask", "ask-auth-tokens", enginetest.FileInput("Read", "/proj", "", ".npmrc")},
+		{"read-git-credentials", "ask", "ask-auth-tokens", enginetest.FileInput("Read", "/proj", "", ".git-credentials")},
+
+		// GPG
+		{"read-gnupg", "ask", "ask-gpg", enginetest.FileInput("Read", "/proj", "", "/home/u/.gnupg/secring.gpg")},
+
 		{"read-plain-file", "allow", "default", enginetest.FileInput("Read", "/proj", "", "main.go")},
 		{"read-envrc", "allow", "default", enginetest.FileInput("Read", "/proj", "", ".envrc")},
 		{"read-environment", "allow", "default", enginetest.FileInput("Read", "/proj", "", "environment.yaml")},
 		{"unrelated-cmd", "allow", "default", enginetest.BashInput("ls -la")},
+		// Intentional non-matches: *.key is not gated (Keynote docs, TLS keys use
+		// .pem here), a bare key name outside .ssh is not gated, and .aws/config
+		// (non-secret profile config) is not gated.
+		{"read-keynote", "allow", "default", enginetest.FileInput("Read", "/proj", "", "deck.key")},
+		{"read-bare-id-rsa", "allow", "default", enginetest.FileInput("Read", "/proj", "", "backups/id_rsa")},
+		{"read-aws-config", "allow", "default", enginetest.FileInput("Read", "/proj", "", "/home/u/.aws/config")},
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
