@@ -61,15 +61,11 @@ func resolveDefaultsPath(name string) (string, []byte, error) {
 
 // xdgDefaultsPath returns the XDG config path for a defaults file.
 func xdgDefaultsPath(filename string) string {
-	var configDir string
-	if dir := os.Getenv("XDG_CONFIG_HOME"); dir != "" {
-		configDir = dir
-	} else if home, err := os.UserHomeDir(); err == nil {
-		configDir = filepath.Join(home, ".config")
-	} else {
+	configDir := ConfigDir()
+	if configDir == "" {
 		return ""
 	}
-	return filepath.Join(configDir, "toolgate", "defaults", filename)
+	return filepath.Join(configDir, "defaults", filename)
 }
 
 // loadWithIncludes recursively loads a policy file and its includes.

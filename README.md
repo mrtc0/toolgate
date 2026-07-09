@@ -132,6 +132,7 @@ These top-level variables are bound for every rule:
 | `mcp`        | map            | `mcp.server` / `mcp.tool` for `kind == "mcp"`.                               |
 | `cwd`        | string         | Working directory of the tool call.                                          |
 | `home`       | string         | The user's home directory (`""` if unknown). Use to write portable rules.    |
+| `toolgate_config_dir` | string | toolgate's config dir (`$XDG_CONFIG_HOME/toolgate` or `~/.config/toolgate`; `""` if unknown). |
 | `session_id` | string         | Agent session/conversation id (`""` if not provided).                        |
 | `input`      | map            | Raw, agent-native tool input.                                                |
 | `parse_ok`   | bool           | Whether the shell command parsed cleanly (`exec` only).                      |

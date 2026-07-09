@@ -47,7 +47,11 @@ type Event struct {
 	// Home is the user's home directory ("" if unknown), injected by the
 	// imperative shell so policies can match home-relative paths portably
 	// (e.g. paths.exists(p, p.startsWith(home + "/.ssh/"))) without a username.
-	Home      string
+	Home string
+	// ConfigDir is toolgate's config directory (policy.ConfigDir()), injected by
+	// the imperative shell so self-protection can guard the user policy and
+	// defaults overrides regardless of where XDG_CONFIG_HOME relocates them.
+	ConfigDir string
 	SessionID string         // "" when the agent provides no session id
 	Input     map[string]any // raw tool input; escape hatch for rules
 }

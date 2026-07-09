@@ -51,6 +51,7 @@ func runHook(args []string) int {
 		})
 	}
 	ev.Home = homeDir()
+	ev.ConfigDir = policy.ConfigDir()
 	engine.SaveLastInput(ad.Name(), ev.SessionID, raw)
 
 	pol, err := loadCompiled(policy.UserPolicyPath(), policy.FindProjectPolicy(ev.CWD))

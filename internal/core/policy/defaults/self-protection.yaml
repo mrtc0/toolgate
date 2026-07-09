@@ -6,7 +6,8 @@ rules:
     action: deny
     when: |
       writes.exists(p,
-        p.glob("{.toolgate.yaml,.claude.json,.config/toolgate/**}") ||
+        p.glob("{.toolgate.yaml,.claude.json}") ||
+        (toolgate_config_dir != "" && p.under(toolgate_config_dir)) ||
         p.glob(".claude/{settings.json,settings.local.json,hooks/**}") ||
         p.glob(".cursor/hooks.json") ||
         p.glob("{.copilot,.github}/hooks/**") ||

@@ -58,6 +58,7 @@ func Env() (*cel.Env, error) {
 		cel.Variable("mcp", cel.MapType(cel.StringType, cel.StringType)),
 		cel.Variable("cwd", cel.StringType),
 		cel.Variable("home", cel.StringType),
+		cel.Variable("toolgate_config_dir", cel.StringType),
 		cel.Variable("session_id", cel.StringType),
 		cel.Variable("cmds", cel.ListType(cel.DynType)),
 		cel.Variable("parse_ok", cel.BoolType),

@@ -124,7 +124,8 @@ var celReservedWords = map[string]bool{
 var builtinVars = map[string]bool{
 	"agent": true, "kind": true, "tool": true, "input": true, "cmd": true,
 	"paths": true, "path": true, "mcp": true, "cwd": true, "home": true,
-	"session_id": true, "cmds": true, "parse_ok": true,
+	"toolgate_config_dir": true,
+	"session_id":          true, "cmds": true, "parse_ok": true,
 	"reads": true, "writes": true, "accesses": true,
 }
 
@@ -154,16 +155,29 @@ func parseFile(path string) (*File, error) {
 	return loadWithIncludes(path, data, visited)
 }
 
-// UserPolicyPath returns the path of the user (trusted) policy file.
-func UserPolicyPath() string {
+// ConfigDir returns toolgate's config directory, honoring XDG_CONFIG_HOME
+// ($XDG_CONFIG_HOME/toolgate) and falling back to ~/.config/toolgate. It
+// returns "" when neither can be resolved. This is the single source of truth
+// for where the user policy and defaults overrides live, so self-protection can
+// guard the directory regardless of XDG relocation.
+func ConfigDir() string {
 	if dir := os.Getenv("XDG_CONFIG_HOME"); dir != "" {
-		return filepath.Join(dir, "toolgate", "policy.yaml")
+		return filepath.Join(dir, "toolgate")
 	}
 	home, err := os.UserHomeDir()
 	if err != nil {
 		return ""
 	}
-	return filepath.Join(home, ".config", "toolgate", "policy.yaml")
+	return filepath.Join(home, ".config", "toolgate")
+}
+
+// UserPolicyPath returns the path of the user (trusted) policy file.
+func UserPolicyPath() string {
+	dir := ConfigDir()
+	if dir == "" {
+		return ""
+	}
+	return filepath.Join(dir, "policy.yaml")
 }
 
 // FindProjectPolicy walks up from cwd looking for a .toolgate.yaml.
