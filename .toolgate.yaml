@@ -17,3 +17,8 @@ rules:
          c.args[0] in ["build", "doc", "fix", "fmt", "generate", "list", "test", "version", "vet"])
         || c.name in ["cd", "pwd", "echo", "true", "tail"]
       )
+
+  - name: gofmt
+    action: allow
+    when: |
+      kind == "exec" && cmds.exists(c, c.name == "gofmt")
