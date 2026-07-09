@@ -68,6 +68,8 @@ include:
   - defaults:deny-publish # block npm publish, cargo publish, etc.
   - defaults:deny-deploy # block deploy commands
   - defaults:dangerous-commands # ask for rm -rf, find -exec, etc.
+  - defaults:shell-exec # ask for sh -c, eval, curl | sh
+  - defaults:interpreter-exec # ask for python -c, curl | python, etc.
   - defaults:git # ask for force push, history rewrite, reset --hard, etc.
   - defaults:safe-cwd # allow ops in cwd, ask outside
   - defaults:sensitive-file-access # control access to .env

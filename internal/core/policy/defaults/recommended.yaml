@@ -7,6 +7,8 @@
 #   - Allow harmless Claude Code activity (~/.claude access, safe tools)
 #   - Sensitive file access controls
 #   - Dangerous command detection
+#   - Dynamic shell code execution (sh -c, eval, curl | sh)
+#   - Dynamic interpreter code execution (python -c, curl | python, ...)
 #   - Dangerous git operations (force push, history rewrite, ...)
 #   - Safe cwd operations
 version: 1
@@ -19,5 +21,7 @@ include:
   - defaults:allow-claude-code
   - defaults:sensitive-file-access
   - defaults:dangerous-commands
+  - defaults:shell-exec
+  - defaults:interpreter-exec
   - defaults:git
   - defaults:safe-cwd

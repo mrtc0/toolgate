@@ -222,6 +222,8 @@ func TestListEmbeddedDefaults(t *testing.T) {
 		"allow-claude-code":     true,
 		"sensitive-file-access": true,
 		"dangerous-commands":    true,
+		"shell-exec":            true,
+		"interpreter-exec":      true,
 		"git":                   true,
 		"safe-cwd":              true,
 		"recommended":           true,

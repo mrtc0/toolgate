@@ -1,0 +1,24 @@
+# Dynamic interpreter code execution that requires confirmation
+version: 1
+
+rules:
+  # Inline interpreter code via the eval flags → ask
+  #
+  #   - python with -c
+  #   - node with -e/--eval/-p/--print
+  #   - ruby/perl with -e/-E
+  #   - php with -r
+  # Running a script file (`python app.py`) is left to the default.
+  - name: ask-interpreter-inline-exec
+    action: ask
+    when: |
+      kind == "exec" &&
+      cmds.exists(c,
+        (c.name in ["python", "python2", "python3"] &&
+         c.flags.exists(f, f == "c")) ||
+        (c.name in ["node", "nodejs"] &&
+         c.flags.exists(f, f in ["e", "eval", "p", "print"])) ||
+        (c.name in ["ruby", "perl"] &&
+         c.flags.exists(f, f in ["e", "E"])) ||
+        (c.name == "php" && c.flags.exists(f, f == "r")))
+    message: "Inline interpreter code execution (-c/-e/-r). Confirm."
