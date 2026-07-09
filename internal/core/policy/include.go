@@ -119,8 +119,11 @@ func loadWithIncludes(path string, data []byte, visited map[string]bool) (*File,
 		Default: f.Default,
 	}
 
-	// Load includes first (in order). Their rules end up before this file's
-	// own rules, so under first-match-wins an included rule takes precedence.
+	// This file's own rules come first: under first-match-wins the including
+	// file overrides what it includes, so a policy can both loosen and tighten
+	// the presets it pulls in.
+	merged.Rules = append(merged.Rules, f.Rules...)
+
 	includeDefault := ""
 	for _, inc := range f.Include {
 		incPath, incData, err := resolveIncludePath(inc, baseDir)
@@ -150,9 +153,10 @@ func loadWithIncludes(path string, data []byte, visited map[string]bool) (*File,
 		merged.Default = includeDefault
 	}
 
-	// Append this file's lets and rules.
+	// Lets keep include-first order (unlike rules): rules are compiled against
+	// the environment after all lets are declared, so rule precedence is
+	// unaffected, and this file's lets can reference the included presets'.
 	merged.Lets = append(merged.Lets, f.Lets...)
-	merged.Rules = append(merged.Rules, f.Rules...)
 
 	// Rules are evaluated against the single merged let list, so a name
 	// collision across include boundaries would silently redefine a let that

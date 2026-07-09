@@ -363,6 +363,53 @@ rules:
 	}
 }
 
+// TestOwnRulesOverrideIncludedPreset pins the include precedence spec: a
+// file's own rules are evaluated before the rules of the presets it includes,
+// so the including file can both loosen (allow over an included ask) and
+// tighten (deny over an included allow) — the same trust level decides.
+func TestOwnRulesOverrideIncludedPreset(t *testing.T) {
+	dir := t.TempDir()
+	writePolicy(t, dir, "preset.yaml", `
+version: 1
+rules:
+  - name: preset-ask-python
+    action: ask
+    when: cmds.exists(c, c.name == "python")
+  - name: preset-allow-cat
+    action: allow
+    when: cmds.exists(c, c.name == "cat")
+`)
+	user := writePolicy(t, dir, "user.yaml", `
+version: 1
+default: ask
+include:
+  - ./preset.yaml
+rules:
+  - name: my-allow-python
+    action: allow
+    when: cmds.exists(c, c.name == "python")
+  - name: my-deny-cat
+    action: deny
+    when: cmds.exists(c, c.name == "cat")
+`)
+	c := loadTestPolicy(t, user, "")
+
+	cases := []struct {
+		name, cmd, action, rule string
+	}{
+		{"own-allow-loosens-included-ask", "python -c 1", "allow", "my-allow-python"},
+		{"own-deny-tightens-included-allow", "cat /etc/hosts", "deny", "my-deny-cat"},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			d := Evaluate(bashInput(tc.cmd), c, Options{})
+			if d.Action != tc.action || d.Rule != tc.rule {
+				t.Errorf("cmd %q: got (%s, %s), want (%s, %s)", tc.cmd, d.Action, d.Rule, tc.action, tc.rule)
+			}
+		})
+	}
+}
+
 func TestBrokenRuleDegradesAllow(t *testing.T) {
 	dir := t.TempDir()
 	user := writePolicy(t, dir, "user.yaml", `

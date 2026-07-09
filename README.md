@@ -80,9 +80,9 @@ include:
 
 Include merge semantics:
 
-- Included rules are placed **before** the including file's own rules, so under first-match-wins an included rule takes precedence.
+- Your own rules are evaluated **before** the rules of the presets you include, so under first-match-wins your rules take precedence: you can loosen a preset (your `allow` over its `ask`) as well as tighten it (your `deny` over its `allow`). Everything in one file is the same trust level — this does not weaken the user/project layer guarantee below.
 - If the including file declares no `default`, the **stricter** of the includes' `default`s applies; the including file's own `default` always wins.
-- A `lets` name must be unique across the file and everything it includes — a collision is a load error, since redefining a let an included rule depends on would silently change what that rule matches.
+- A `lets` name must be unique across the file and everything it includes — a collision is a load error, since redefining a let an included rule depends on would silently change what that rule matches. Your lets can reference the included presets' lets (e.g. `ro_cmds` from `defaults:safe-cwd`).
 
 ### Reusable expressions with `lets`
 

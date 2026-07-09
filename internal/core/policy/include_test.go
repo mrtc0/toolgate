@@ -109,7 +109,8 @@ rules:
 		t.Fatalf("parseFile error: %v", err)
 	}
 
-	// Check lets are merged (base first, then main)
+	// Check lets are merged (base first, then main, so main's lets can
+	// reference the included ones)
 	if len(f.Lets) != 2 {
 		t.Errorf("expected 2 lets, got %d", len(f.Lets))
 	}
@@ -120,15 +121,16 @@ rules:
 		t.Errorf("expected main_var second, got %s", f.Lets[1].Name)
 	}
 
-	// Check rules are merged
+	// Check rules are merged (main first: the including file's own rules take
+	// precedence under first-match-wins)
 	if len(f.Rules) != 2 {
 		t.Errorf("expected 2 rules, got %d", len(f.Rules))
 	}
-	if f.Rules[0].Name != "base-rule" {
-		t.Errorf("expected base-rule first, got %s", f.Rules[0].Name)
+	if f.Rules[0].Name != "main-rule" {
+		t.Errorf("expected main-rule first, got %s", f.Rules[0].Name)
 	}
-	if f.Rules[1].Name != "main-rule" {
-		t.Errorf("expected main-rule second, got %s", f.Rules[1].Name)
+	if f.Rules[1].Name != "base-rule" {
+		t.Errorf("expected base-rule second, got %s", f.Rules[1].Name)
 	}
 }
 
@@ -204,9 +206,12 @@ rules:
 		t.Errorf("expected at least 2 rules, got %d", len(f.Rules))
 	}
 
-	// First rule should be from self-protection
-	if f.Rules[0].Name != "protect-gate-config" {
-		t.Errorf("expected protect-gate-config first, got %s", f.Rules[0].Name)
+	// The file's own rule comes first, then the included preset's
+	if f.Rules[0].Name != "custom-rule" {
+		t.Errorf("expected custom-rule first, got %s", f.Rules[0].Name)
+	}
+	if f.Rules[1].Name != "protect-gate-config" {
+		t.Errorf("expected protect-gate-config second, got %s", f.Rules[1].Name)
 	}
 }
 
