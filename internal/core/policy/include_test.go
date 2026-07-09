@@ -3,6 +3,7 @@ package policy
 import (
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 )
 
@@ -206,6 +207,88 @@ rules:
 	// First rule should be from self-protection
 	if f.Rules[0].Name != "protect-gate-config" {
 		t.Errorf("expected protect-gate-config first, got %s", f.Rules[0].Name)
+	}
+}
+
+// TestDuplicateLetAcrossIncludesRejected pins that a let name collision across
+// include boundaries is a load error. Lets are evaluated into a single
+// activation map, so a silent collision would let the including file redefine
+// a let an included rule depends on — disabling that rule without warning.
+func TestDuplicateLetAcrossIncludesRejected(t *testing.T) {
+	dir := t.TempDir()
+
+	preset := filepath.Join(dir, "preset.yaml")
+	presetContent := `
+version: 1
+lets:
+  py: 'cmds.exists(c, c.name == "python")'
+rules:
+  - name: preset-ask-python
+    action: ask
+    when: py
+`
+	if err := os.WriteFile(preset, []byte(presetContent), 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	mainFile := filepath.Join(dir, "main.yaml")
+	mainContent := `
+version: 1
+include:
+  - ./preset.yaml
+lets:
+  py: 'cmds.exists(c, c.name == "python3")'
+rules:
+  - name: my-allow-python
+    action: allow
+    when: py
+`
+	if err := os.WriteFile(mainFile, []byte(mainContent), 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	_, err := parseFile(mainFile)
+	if err == nil {
+		t.Fatal("expected error for duplicate let name across includes")
+	}
+	if !strings.Contains(err.Error(), `duplicate let name "py"`) {
+		t.Errorf("unexpected error: %v", err)
+	}
+}
+
+// TestIncludeDefaultsMergeStricter pins that when several includes declare a
+// default, the stricter one wins regardless of include order — consistent with
+// the user/project layer merge. The including file's own explicit default
+// still wins over its includes'.
+func TestIncludeDefaultsMergeStricter(t *testing.T) {
+	dir := t.TempDir()
+	write := func(name, content string) {
+		t.Helper()
+		if err := os.WriteFile(filepath.Join(dir, name), []byte(content), 0o644); err != nil {
+			t.Fatal(err)
+		}
+	}
+	write("loose.yaml", "version: 1\ndefault: allow\n")
+	write("strict.yaml", "version: 1\ndefault: deny\n")
+
+	cases := []struct {
+		name, main, want string
+	}{
+		{"strict-include-last", "version: 1\ninclude:\n  - ./loose.yaml\n  - ./strict.yaml\n", "deny"},
+		{"strict-include-first", "version: 1\ninclude:\n  - ./strict.yaml\n  - ./loose.yaml\n", "deny"},
+		{"own-default-wins", "version: 1\ndefault: ask\ninclude:\n  - ./strict.yaml\n", "ask"},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			write("main.yaml", tc.main)
+			f, err := parseFile(filepath.Join(dir, "main.yaml"))
+			if err != nil {
+				t.Fatal(err)
+			}
+			if f.Default != tc.want {
+				t.Errorf("default = %q, want %q", f.Default, tc.want)
+			}
+		})
 	}
 }
 

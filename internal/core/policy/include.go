@@ -119,7 +119,9 @@ func loadWithIncludes(path string, data []byte, visited map[string]bool) (*File,
 		Default: f.Default,
 	}
 
-	// Load includes first (in order)
+	// Load includes first (in order). Their rules end up before this file's
+	// own rules, so under first-match-wins an included rule takes precedence.
+	includeDefault := ""
 	for _, inc := range f.Include {
 		incPath, incData, err := resolveIncludePath(inc, baseDir)
 		if err != nil {
@@ -131,17 +133,37 @@ func loadWithIncludes(path string, data []byte, visited map[string]bool) (*File,
 			return nil, err
 		}
 
-		// Merge included file
+		// Merge included file. Defaults from includes merge stricter-wins, so
+		// include order cannot weaken the floor a stricter include declared.
 		merged.Lets = append(merged.Lets, incFile.Lets...)
 		merged.Rules = append(merged.Rules, incFile.Rules...)
-		if incFile.Default != "" && merged.Default == "" {
-			merged.Default = incFile.Default
+		if incFile.Default != "" {
+			if includeDefault == "" {
+				includeDefault = incFile.Default
+			} else {
+				includeDefault = Stricter(includeDefault, incFile.Default)
+			}
 		}
 	}
+	// The including file's own explicit default wins over its includes'.
+	if merged.Default == "" {
+		merged.Default = includeDefault
+	}
 
-	// Append this file's lets and rules (later = higher priority)
+	// Append this file's lets and rules.
 	merged.Lets = append(merged.Lets, f.Lets...)
 	merged.Rules = append(merged.Rules, f.Rules...)
+
+	// Rules are evaluated against the single merged let list, so a name
+	// collision across include boundaries would silently redefine a let that
+	// an included rule depends on. Reject it like an in-file duplicate.
+	seenLets := make(map[string]bool)
+	for _, l := range merged.Lets {
+		if seenLets[l.Name] {
+			return nil, fmt.Errorf("%s: lets: duplicate let name %q across includes", path, l.Name)
+		}
+		seenLets[l.Name] = true
+	}
 
 	return merged, nil
 }

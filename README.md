@@ -78,6 +78,12 @@ include:
 
 `defaults:recommended` combines all the above for a practical starting point. See [examples/default.yaml](examples/default.yaml).
 
+Include merge semantics:
+
+- Included rules are placed **before** the including file's own rules, so under first-match-wins an included rule takes precedence.
+- If the including file declares no `default`, the **stricter** of the includes' `default`s applies; the including file's own `default` always wins.
+- A `lets` name must be unique across the file and everything it includes — a collision is a load error, since redefining a let an included rule depends on would silently change what that rule matches.
+
 ### Reusable expressions with `lets`
 
 Define reusable CEL expressions with `lets:` to keep rules DRY:
