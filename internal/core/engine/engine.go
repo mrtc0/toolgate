@@ -16,23 +16,12 @@ import (
 // parsed and are routed to ask.
 const MaxCommandLen = 64 * 1024
 
-// RuleTrace records how one rule evaluated for `toolgate explain`.
-type RuleTrace struct {
-	Name    string `json:"name"`
-	Action  string `json:"action"`
-	Source  string `json:"source"`
-	Matched bool   `json:"matched"`
-	Skipped bool   `json:"skipped,omitempty"` // not evaluated (after first match)
-	Error   string `json:"error,omitempty"`
-}
-
 // Decision is the final verdict for one tool call.
 type Decision struct {
-	Action   string      `json:"action"`
-	Rule     string      `json:"rule"`    // matched rule, "default", or "builtin:..."
-	Message  string      `json:"message"` // reason shown to Claude Code
-	Trace    []RuleTrace `json:"trace,omitempty"`
-	Warnings []string    `json:"warnings,omitempty"`
+	Action   string   `json:"action"`
+	Rule     string   `json:"rule"`    // matched rule, "default", or "builtin:..."
+	Message  string   `json:"message"` // reason shown to Claude Code
+	Warnings []string `json:"warnings,omitempty"`
 }
 
 // Options tweaks evaluation behavior.
@@ -81,7 +70,6 @@ func Evaluate(ev *event.Event, pol *policy.Compiled, opts Options) Decision {
 	userMatch, projMatch := -1, -1
 	for i, cr := range pol.Rules {
 		isProject := cr.Rule.Source == "project"
-		t := RuleTrace{Name: cr.Rule.Name, Action: cr.Rule.Action, Source: cr.Rule.Source}
 		vars := userVars
 		layerDone := userMatch >= 0
 		if isProject {
@@ -90,21 +78,17 @@ func Evaluate(ev *event.Event, pol *policy.Compiled, opts Options) Decision {
 		}
 		switch {
 		case layerDone:
-			t.Skipped = true
+			// This layer already has its first match; skip the rest of it.
 		case cr.Err != nil:
-			t.Error = cr.Err.Error()
 			d.Warnings = append(d.Warnings, "broken rule skipped: "+cr.Err.Error())
 		default:
 			out, _, err := cr.Program.Eval(vars)
 			if err != nil {
-				t.Error = err.Error()
 				d.Warnings = append(d.Warnings, fmt.Sprintf("rule %q evaluation error: %v", cr.Rule.Name, err))
 				degraded = true
 			} else if out == nil {
-				t.Error = "no result"
 				degraded = true
 			} else if b, ok := out.Value().(bool); ok && b {
-				t.Matched = true
 				if isProject {
 					projMatch = i
 				} else {
@@ -112,7 +96,6 @@ func Evaluate(ev *event.Event, pol *policy.Compiled, opts Options) Decision {
 				}
 			}
 		}
-		d.Trace = append(d.Trace, t)
 	}
 
 	// The user layer always has a decision: its matched rule or the user default.
@@ -179,6 +162,7 @@ func evalLets(lets []policy.CompiledLet, baseVars map[string]any, d *Decision) (
 	degraded := false
 	for _, cl := range lets {
 		if cl.Err != nil {
+			d.Warnings = append(d.Warnings, "broken let skipped: "+cl.Err.Error())
 			degraded = true
 			continue
 		}

@@ -30,21 +30,18 @@ func runDoctor() int {
 	warn := func(format string, a ...any) { fmt.Printf("warn:  "+format+"\n", a...) }
 	fail := func(format string, a ...any) { fmt.Printf("error: "+format+"\n", a...); problems++ }
 
-	// Policy health.
+	// Policy health. The user layer and the project layer for the current
+	// directory are loaded separately, so problems are attributed to the
+	// right file.
 	userPath := policy.UserPolicyPath()
 	if _, err := os.Stat(userPath); err != nil {
 		warn("no user policy at %s (default action applies to everything)", userPath)
-	} else if pol, err := loadCompiled(userPath, ""); err != nil {
-		fail("user policy %s does not load: %v", userPath, err)
 	} else {
-		if pol.Broken {
-			for _, r := range pol.Rules {
-				if r.Err != nil {
-					fail("policy rule %q does not compile: %v", r.Rule.Name, r.Err)
-				}
-			}
-		} else {
-			ok("user policy %s compiles (%d rules, default %s)", userPath, len(pol.Rules), pol.Default)
+		checkPolicyLayer("user policy", userPath, "", ok, fail)
+	}
+	if cwd, err := os.Getwd(); err == nil {
+		if projPath := policy.FindProjectPolicy(cwd); projPath != "" {
+			checkPolicyLayer("project policy", "", projPath, ok, fail)
 		}
 	}
 
@@ -62,6 +59,43 @@ func runDoctor() int {
 	checkHookFile(filepath.Join(home, ".cursor", "hooks.json"), ok, warn, fail, true)
 
 	return exitCode(problems)
+}
+
+// checkPolicyLayer loads one policy layer (pass exactly one of userPath /
+// projectPath) and reports every let and rule that does not compile — a
+// broken let alone must not leave doctor silent. A healthy layer is reported
+// with its rule count and its own default action.
+func checkPolicyLayer(label, userPath, projectPath string, ok, fail func(string, ...any)) {
+	path := userPath
+	if path == "" {
+		path = projectPath
+	}
+	pol, err := loadCompiled(userPath, projectPath)
+	if err != nil {
+		fail("%s %s does not load: %v", label, path, err)
+		return
+	}
+	if pol.Broken {
+		for _, l := range append(append([]policy.CompiledLet{}, pol.UserLets...), pol.ProjectLets...) {
+			if l.Err != nil {
+				fail("%s %s: %v", label, path, l.Err)
+			}
+		}
+		for _, r := range pol.Rules {
+			if r.Err != nil {
+				fail("%s %s: %v", label, path, r.Err)
+			}
+		}
+		return
+	}
+	def := pol.UserDefault
+	if userPath == "" {
+		def = pol.ProjectDefault
+		if def == "" {
+			def = "none (user policy's default applies)"
+		}
+	}
+	ok("%s %s compiles (%d rules, default %s)", label, path, len(pol.Rules), def)
 }
 
 func exitCode(problems int) int {

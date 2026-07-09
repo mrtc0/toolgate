@@ -439,6 +439,40 @@ rules:
 	}
 }
 
+// TestBrokenLetWarnsAndDegrades pins that a let that fails to compile is
+// surfaced as a warning, like a broken rule — not silently skipped.
+func TestBrokenLetWarnsAndDegrades(t *testing.T) {
+	dir := t.TempDir()
+	user := writePolicy(t, dir, "user.yaml", `
+version: 1
+default: ask
+lets:
+  bad: "this is not CEL ((("
+rules:
+  - name: allow-everything
+    action: allow
+    when: "true"
+`)
+	c := loadTestPolicy(t, user, "")
+	if !c.Broken {
+		t.Fatal("policy should be marked broken")
+	}
+	d := Evaluate(bashInput("ls"), c, Options{})
+	// Degraded: the allow match falls back to the default.
+	if d.Action != "ask" {
+		t.Errorf("got %s, want ask", d.Action)
+	}
+	found := false
+	for _, w := range d.Warnings {
+		if strings.Contains(w, "broken let skipped") && strings.Contains(w, `let "bad"`) {
+			found = true
+		}
+	}
+	if !found {
+		t.Errorf("expected a 'broken let skipped' warning, got %v", d.Warnings)
+	}
+}
+
 func TestHomeVariablePortable(t *testing.T) {
 	// A policy written against the injected `home` variable applies to any
 	// user's home directory, so it can be shared without hard-coding a username.
