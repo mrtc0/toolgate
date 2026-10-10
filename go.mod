@@ -4,7 +4,7 @@ go 1.26.4
 
 require (
 	github.com/bmatcuk/doublestar/v4 v4.10.0
-	github.com/google/cel-go v0.28.1
+	github.com/google/cel-go v0.30.0
 	github.com/spf13/cobra v1.10.2
 	github.com/stretchr/testify v1.11.1
 	gopkg.in/yaml.v3 v3.0.1
